@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#182d48">
+  <meta name="color-scheme" content="light">
+  <meta name="description" content="基于RT-Thread与MCXA346的无刷电机本地监测台。只读显示AS5600角度与速度，调参由串口CLI完成。">
+  <title>Motor Lab · 无刷电机监测台</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/monitor.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#workspace">跳转到监测面板</a>
+  <header class="masthead">
+    <div class="masthead-inner">
+      <a class="brand" href="/" aria-label="Motor Lab 监测首页">
+        <svg class="brand-mark" viewBox="0 0 40 40" aria-hidden="true">
+          <circle cx="20" cy="20" r="16" fill="none" stroke="currentColor" stroke-width="2"/>
+          <path d="M20 4v9m0 14v9M4 20h9m14 0h9" stroke="currentColor" stroke-width="4"/>
+          <circle cx="20" cy="20" r="5" fill="currentColor"/>
+        </svg>
+        <span><strong>Motor Lab<span class="brand-cn">无刷电机监测台</span></strong><small>RT-Thread 驱动的电机控制实验平台</small></span>
+      </a>
+      <div class="header-meta"><span class="board-label">FRDM-MCXA346</span><span class="read-only"><span class="lock-icon" aria-hidden="true"></span>只读监测</span></div>
+    </div>
+  </header>
+
+  <main class="shell" id="workspace">
+    <div class="page-heading">
+      <div><p class="breadcrumb">工作台 <span aria-hidden="true">/</span> 实时监测</p><h1>看见每一次转动<span class="heading-period">。</span></h1><p class="page-description">角度、速度与链路状态，在同一个面板中实时呈现。</p></div>
+      <div id="liveBadge" class="live-badge" role="status"><i class="dot" aria-hidden="true"></i><span id="liveText">设备未连接</span></div>
+    </div>
+
+    <div class="layout">
+      <section class="panel instrument" aria-labelledby="angleHeading">
+        <div class="panel-heading">
+          <div><h2 id="angleHeading">转子位置</h2><p>机械角度</p></div>
+          <span id="sensorChip" class="sensor-chip">AS5600 · 待连接</span>
+        </div>
+        <div class="dial-wrap">
+          <svg class="dial" viewBox="0 0 360 360" role="img" aria-label="AS5600机械角度仪表，数值显示在下方">
+            <defs>
+              <radialGradient id="dialSurface" cx="40%" cy="30%" r="70%"><stop stop-color="#fff"/><stop offset="1" stop-color="#f0f4f8"/></radialGradient>
+              <linearGradient id="metal" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#dfe6ee"/><stop offset=".5" stop-color="#fff"/><stop offset="1" stop-color="#d0dbe6"/></linearGradient>
+            </defs>
+            <circle cx="180" cy="180" r="172" class="dial-rim"/>
+            <circle cx="180" cy="180" r="163" fill="url(#dialSurface)" stroke="#d9e2ec"/>
+            <path class="dial-crosshair" d="M180 15v20m0 290v20M15 180h20m290 0h20"/>
+            <circle class="track" cx="180" cy="180" r="139"/>
+            <circle id="arc" class="arc" cx="180" cy="180" r="139"/>
+            <g id="ticks" class="ticks"></g><g id="labels" class="labels"></g>
+            <circle cx="180" cy="180" r="79" fill="none" stroke="#e1e8f0"/>
+            <g id="rotor" class="rotor">
+              <circle class="rotor-ring" cx="180" cy="180" r="63"/>
+              <path class="rotor-mark" d="M174 118h12l-2 24h-8z"/>
+              <path class="rotor-mark" d="M174 118h12l-2 24h-8z" transform="rotate(60 180 180)"/>
+              <path class="rotor-mark" d="M174 118h12l-2 24h-8z" transform="rotate(120 180 180)"/>
+              <path class="rotor-mark" d="M174 118h12l-2 24h-8z" transform="rotate(180 180 180)"/>
+              <path class="rotor-mark" d="M174 118h12l-2 24h-8z" transform="rotate(240 180 180)"/>
+              <path class="rotor-mark" d="M174 118h12l-2 24h-8z" transform="rotate(300 180 180)"/>
+            </g>
+            <g id="pointer" class="pointer"><path d="M180 51l-5 122-4 14q9 10 18 0l-4-14z"/></g>
+            <circle cx="180" cy="180" r="17" fill="url(#metal)" stroke="#c9d5e2"/>
+            <circle cx="180" cy="180" r="7" fill="#253b56"/>
+          </svg>
+        </div>
+        <div class="readout"><div class="angle"><span id="angleValue">—</span><span class="angle-unit">°</span></div><p class="readout-caption">绝对机械角度 <span>0–360°</span></p></div>
+        <div class="direction"><span class="direction-symbol" aria-hidden="true">↻</span><span id="direction">连接设备后显示实时转动</span></div>
+        <div class="instrument-foot"><span><i aria-hidden="true"></i>AS5600 磁编码器</span><span>12-bit / I²C</span></div>
+      </section>
+
+      <aside class="side" aria-label="设备连接与遥测">
+        <section class="panel connection" aria-labelledby="connectionHeading">
+          <div class="panel-heading"><h2 id="connectionHeading">设备连接</h2><span class="small-tag">USB–TTL</span></div>
+          <p class="section-hint">选择外置串口模块，建立本地遥测连接。</p>
+          <label class="field-label" for="portSelect">串口设备</label>
+          <div class="select-row">
+            <select id="portSelect"><option value="">正在扫描串口…</option></select>
+            <button class="icon" id="refreshButton" type="button" title="刷新串口" aria-label="刷新串口列表">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M19 8a8 8 0 1 0 1 7M19 3v6h-6"/></svg>
+            </button>
+          </div>
+          <button class="connect-button" id="connectButton" type="button"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M7 2v4m6-4v4M5 6h10v3a5 5 0 0 1-10 0V6zm5 8v4"/></svg><span id="connectText">连接设备</span></button>
+          <div class="connection-status" id="connectionStatus" role="status"><i class="dot" aria-hidden="true"></i><span>未连接设备</span></div>
+        </section>
+
+        <section class="panel metrics" aria-labelledby="telemetryHeading">
+          <div class="panel-heading"><h2 id="telemetryHeading">实时遥测</h2><span class="small-tag">原始反馈</span></div>
+          <dl class="metric-grid">
+            <div class="metric"><dt>角速度 <span>Angular velocity</span></dt><dd><span id="speedValue">—</span><small>rad/s</small></dd></div>
+            <div class="metric"><dt>原始角度 <span>Raw angle</span></dt><dd><span id="rawValue">—</span><small>/ 4095</small></dd></div>
+            <div class="metric"><dt>弧度 <span>Radian</span></dt><dd><span id="radianValue">—</span><small>rad</small></dd></div>
+            <div class="metric"><dt>平均帧间隔 <span>Frame interval</span></dt><dd><span id="ageValue">—</span><small>ms</small></dd></div>
+          </dl>
+        </section>
+
+        <section class="panel link-panel" aria-labelledby="linkHeading">
+          <div class="panel-heading"><h2 id="linkHeading">数据链路</h2><span id="linkState" class="link-state">等待设备</span></div>
+          <div class="link-values"><div><span>接收频率</span><strong><span id="rateValue">—</span><small>Hz</small></strong></div><div><span>累计丢帧</span><strong><span id="droppedValue">—</span><small>帧</small></strong></div></div>
+          <p id="detailStatus" class="detail-status">连接串口后显示链路统计。校准与调参请使用CLI。</p>
+        </section>
+      </aside>
+    </div>
+    <div class="workspace-note"><span class="note-icon" aria-hidden="true">i</span><p>网页只做监测，不下发电机启动指令。调参、校准与控制由串口CLI完成，两者请勿同时占用串口。</p></div>
+    <footer><span>RT-Thread × MCXA346 <span class="footer-divider">/</span> 轻量神经网络混合控制</span><span>本地运行 <span class="footer-divider">/</span> 115200 baud <span class="footer-divider">/</span> 无云端连接</span></footer>
+  </main>
+</body>
+</html>

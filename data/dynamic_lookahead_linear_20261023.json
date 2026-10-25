@@ -1,0 +1,34 @@
+{
+  "schema": "dynamic_pi_lookahead_v1",
+  "selected_epochs": 800,
+  "horizon_ms": 250,
+  "output_limit_v": 0.03,
+  "input_features": [
+    "target_rad_s/1.5707963",
+    "actual_rad_s/1.5707963",
+    "target_times_actual_negative"
+  ],
+  "teacher": "existing PI integral(t+250ms)-integral(t), clipped +/-30mV",
+  "split": "repeat0 train; repeat1 chooses epochs; repeat2 held-out",
+  "warning": "PI imitation/lookahead, NOT optimal plant voltage. Offline prediction does not establish control improvement.",
+  "splits": {
+    "train": {
+      "samples": 3788,
+      "nn_rmse_v": 0.003408301801485915,
+      "linear_rmse_v": 0.003584118824986129,
+      "zero_rmse_v": 0.003984301351010799
+    },
+    "validation": {
+      "samples": 3785,
+      "nn_rmse_v": 0.003635655920678944,
+      "linear_rmse_v": 0.003907345076773679,
+      "zero_rmse_v": 0.004193412140011787
+    },
+    "test": {
+      "samples": 3790,
+      "nn_rmse_v": 0.0036685677842469683,
+      "linear_rmse_v": 0.003991226983574937,
+      "zero_rmse_v": 0.00434858538210392
+    }
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "integral_reset": {
+    "samples": 12122,
+    "max_prediction_error_v": 0.0009999598004024853,
+    "max_application_error_v": 0.0016365584135055455,
+    "passed": true
+  },
+  "integral_keep": {
+    "samples": 12113,
+    "max_prediction_error_v": 0.0009998356069391484,
+    "max_application_error_v": 0.0016365584135055455,
+    "passed": true
+  }
+}

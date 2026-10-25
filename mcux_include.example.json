@@ -1,0 +1,16 @@
+{
+  "version": 7,
+  "configurePresets": [
+    {
+      "name": "debug-env",
+      "hidden": true,
+      "environment": {
+        "ARMGCC_DIR": "C:/path/to/arm-gnu-toolchain",
+        "SdkRootDirPath": "C:/path/to/SDK_workspace",
+        "MCUX_VENV_PATH": "C:/path/to/mcux-python/Scripts",
+        "PATH": "$env{MCUX_VENV_PATH}${pathListSep}$penv{PATH}",
+        "POSTPROCESS_UTILITY": "C:/path/to/mcux-fixelf.exe"
+      }
+    }
+  ]
+}

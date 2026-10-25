@@ -1,0 +1,130 @@
+{
+  "schema": "relu_speed_ff1",
+  "knots": [
+    -1.0,
+    -0.6666666666666666,
+    -0.3333333333333333,
+    -0.05,
+    0.05,
+    0.3333333333333333,
+    0.6666666666666666,
+    1.0
+  ],
+  "weight_units_v": 0.0001,
+  "upload_weights": [
+    -5200,
+    0,
+    0,
+    39302,
+    -39302,
+    0,
+    0,
+    0,
+    3235
+  ],
+  "study_kind": "friction",
+  "measured_rpm_range": [
+    -30.0,
+    30.0
+  ],
+  "split": "repeat0 fit; repeat1 select residual ridge; repeat>=2 held-out",
+  "coulomb_residual_v": 0.19650856826976237,
+  "slope_residual_v_per_180rpm": -0.5200123588844124,
+  "residual_ridge": 0.01,
+  "heldout_voltage_rmse_v": 0.03137369664882818,
+  "limitation": "Static target-speed residual only; no proven dynamic friction identification. Voltage fit is not closed-loop improvement.",
+  "points": [
+    {
+      "repeat": 0,
+      "rpm": 15.0,
+      "residual_v": 0.11802578048544768
+    },
+    {
+      "repeat": 0,
+      "rpm": -15.0,
+      "residual_v": -0.1291122002385341
+    },
+    {
+      "repeat": 0,
+      "rpm": 30.0,
+      "residual_v": 0.11940958566225339
+    },
+    {
+      "repeat": 0,
+      "rpm": -30.0,
+      "residual_v": -0.11718736344003118
+    },
+    {
+      "repeat": 0,
+      "rpm": 5.0,
+      "residual_v": 0.12171641242519039
+    },
+    {
+      "repeat": 0,
+      "rpm": -5.0,
+      "residual_v": -0.14386456057333852
+    },
+    {
+      "repeat": 1,
+      "rpm": 15.0,
+      "residual_v": 0.118359113818781
+    },
+    {
+      "repeat": 1,
+      "rpm": -15.0,
+      "residual_v": -0.12866775579408968
+    },
+    {
+      "repeat": 1,
+      "rpm": 30.0,
+      "residual_v": 0.12090341282274723
+    },
+    {
+      "repeat": 1,
+      "rpm": -30.0,
+      "residual_v": -0.1173848943042287
+    },
+    {
+      "repeat": 1,
+      "rpm": 5.0,
+      "residual_v": 0.12104974575852372
+    },
+    {
+      "repeat": 1,
+      "rpm": -5.0,
+      "residual_v": -0.14572875810420272
+    },
+    {
+      "repeat": 2,
+      "rpm": 15.0,
+      "residual_v": 0.11875417554717607
+    },
+    {
+      "repeat": 2,
+      "rpm": -15.0,
+      "residual_v": -0.1261615829545835
+    },
+    {
+      "repeat": 2,
+      "rpm": 30.0,
+      "residual_v": 0.12337254862521639
+    },
+    {
+      "repeat": 2,
+      "rpm": -30.0,
+      "residual_v": -0.1190515609708954
+    },
+    {
+      "repeat": 2,
+      "rpm": 5.0,
+      "residual_v": 0.12142011612889407
+    },
+    {
+      "repeat": 2,
+      "rpm": -5.0,
+      "residual_v": -0.14959295563506692
+    }
+  ],
+  "source": "E:\\NXP\\projs\\test1\\data\\friction_baseline_20261023.csv",
+  "source_sha256": "f6349320f15582bf413b0036dc691b3ac7003a1926fa7c6391ccc42544efc6ec"
+}

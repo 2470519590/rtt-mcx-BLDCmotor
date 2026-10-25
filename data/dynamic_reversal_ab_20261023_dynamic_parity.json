@@ -1,0 +1,20 @@
+{
+  "friction": {
+    "samples": 12114,
+    "max_prediction_error_v": 0.0009998356069391484,
+    "max_application_error_v": 0.0016365584135055455,
+    "passed": true
+  },
+  "dynamic_nn": {
+    "samples": 12116,
+    "max_prediction_error_v": 0.0009999598004024853,
+    "max_application_error_v": 0.001993911123615383,
+    "passed": true
+  },
+  "dynamic_linear": {
+    "samples": 12116,
+    "max_prediction_error_v": 0.000999994278436389,
+    "max_application_error_v": 0.002001157250599017,
+    "passed": true
+  }
+}

@@ -1,0 +1,17 @@
+# Exactly one local output directory; never submit compiled/debug state.
+/debug/
+/build*/
+**/__pycache__/
+*.py[cod]
+/.venv/
+/.env
+/mcux_include.json
+/.vscode/launch.json
+/.vscode/mcuxpresso-tools.json
+Thumbs.db
+Desktop.ini
+*.log
+
+# Test capture folders are frozen evidence, not throwaway logs.
+!data/**/reads.jsonl
+!data/**/writes.jsonl
