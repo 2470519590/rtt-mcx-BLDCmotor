@@ -11,6 +11,8 @@
 Thumbs.db
 Desktop.ini
 *.log
+# Local agent instructions are not public project documentation.
+/AGENTS.md
 
 # Test capture folders are frozen evidence, not throwaway logs.
 !data/**/reads.jsonl

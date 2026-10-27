@@ -21,5 +21,4 @@ raw.bin、reads.jsonl、writes.jsonl。原始字节与时间日志用于独立�
 - dynamic_lookahead_linear_20261023.npz/.json：冻结动态NN/线性模型。
 - angle_residual_candidate_v2.npz：旧角度模型测试夹具，不代表本轮有效收益。
 
-详细结论与限制见 `../docs/history/MOTOR_OPTIMIZATION.md`。
-原始完整工程 `E:\NXP\projs\test1` 保留未选入的数据。
+详细结论与限制见 [实测结果](../docs/RESULTS.md)。
