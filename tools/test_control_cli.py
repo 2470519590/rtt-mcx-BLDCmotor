@@ -10,6 +10,14 @@ from control_cli import MotorSerial
 
 
 class SweepTests(unittest.TestCase):
+    def test_position_trajectory_is_explicit_and_milliseconds(self):
+        for value in (0, 100, 500, 2000):
+            self.motor.set_parameter('posmove', value)
+            self.motor.send_checked.assert_called_with('t', value)
+        for value in (-1, 50, 2001, 500.5, float('nan')):
+            with self.assertRaises(ValueError):
+                self.motor.set_parameter('posmove', value)
+
     def test_proportional_reference_time_constant(self):
         self.motor.set_parameter('pref', 25)
         self.motor.send_checked.assert_called_with('r', 25)

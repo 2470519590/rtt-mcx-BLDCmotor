@@ -11,6 +11,7 @@
 #include "speed_estimator.h"
 #include "speed_transition.h"
 #include "speed_reference.h"
+#include "position_reference.h"
 #include "fsl_device_registers.h"
 
 #define MOTOR_TWO_PI (6.28318530718f)
@@ -66,6 +67,8 @@ static float s_ki = MOTOR_SPEED_KI_DEFAULT;
 static float s_position_kp = MOTOR_POSITION_KP_DEFAULT;
 static float s_position_speed_limit = MOTOR_POSITION_MAX_RPM_DEFAULT * MOTOR_TWO_PI / 60.0f;
 static float s_target_position_rad;
+static position_reference_t s_position_reference;
+static unsigned s_position_move_ms; /* 0 = original position loop, t500 = smooth demo. */
 static float s_integral_v;
 static unsigned s_speed_transition_keep; /* RAM only; default legacy reset. */
 static unsigned s_proportional_tau_ms; /* zero preserves original controller */
@@ -126,6 +129,7 @@ static void stop_output(uint8_t mode)
     s_state.nn_delta_uq = 0;
     s_integral_v = 0;
     s_proportional_reference = 0;
+    position_reference_reset(&s_position_reference, s_state.position_rad, 0);
     simplefoc_pwm_set_all(0, 0, 0);
 }
 
@@ -163,7 +167,7 @@ int motor_control_command(char op, int value)
        same thread; any imbalance there leaves the loop waiting forever and
        looks exactly like a dead UART with live telemetry. */
     if (op == 'x' && value == 0) return 0;
-    if (op == 'z' && value == 0) return 3005; /* selectable P-reference filter */
+    if (op == 'z' && value == 0) return 3006; /* optional position trajectory */
     /* Stage trace: shows whether motor_control_command was entered at all and
        where it stopped. Without it a hung command is indistinguishable from a
        lost byte in the UART path. */
@@ -215,16 +219,25 @@ int motor_control_command(char op, int value)
         result = (int)s_speed_transition_keep;
     } else if (op == 'r' && idle && value >= 0 && value <= 200) {
         s_proportional_tau_ms = (unsigned)value;
+    } else if (op == 't' && idle && (value == 0 || (value >= 100 && value <= 2000))) {
+        s_position_move_ms = (unsigned)value;
     } else if (op == 'X' && value >= -100000 && value <= 100000 &&
                nn_controller_get_mode() != NN_MODE_ANGLE_BLENDED &&
                nn_controller_get_mode() < NN_MODE_DYNAMIC_SHADOW &&
                g_pwm_debug.init_status == 0 && s_state.calibrated && s_state.sensor_ok &&
                s_state.mode != 1) {
+        unsigned keep = s_position_move_ms != 0 && s_state.mode == 8;
+        if (!keep)
+            position_reference_reset(&s_position_reference, s_state.position_rad,
+                                     s_state.feedback_speed_rad_s);
         s_target_position_rad = value / 1000.0f;
+        if (s_position_move_ms)
+            position_reference_target(&s_position_reference, s_target_position_rad,
+                                      s_position_move_ms, s_position_speed_limit);
         s_state.target_position_rad = s_target_position_rad;
         s_state.mode = 8;
         s_state.fault = 0;
-        s_integral_v = 0;
+        if (!keep) s_integral_v = 0;
         s_control_tick = rt_tick_get();
         s_last_command = s_control_tick;
     } else if (op == 'O' && value != 0 && value >= -MOTOR_OPENLOOP_MAX_RPM && value <= MOTOR_OPENLOOP_MAX_RPM &&
@@ -635,18 +648,25 @@ void motor_control_thread(void *parameter)
                 continue;
             }
             float speed = s_direction * s_state.speed_rad_s;
+            float dt = (float)(now - s_control_tick) / RT_TICK_PER_SECOND;
+            if (dt <= 0.0f || dt > 0.05f) dt = ENCODER_SAMPLE_PERIOD_MS / 1000.0f;
+            s_control_tick = now;
             if (s_state.mode == 8) {
-                float position_error = s_target_position_rad - s_state.position_rad;
-                s_state.target_rad_s = position_error * s_position_kp;
+                if (s_position_move_ms) {
+                    s_state.target_rad_s = position_reference_update(&s_position_reference,
+                        dt, s_state.position_rad, speed, s_position_kp, s_position_speed_limit);
+                } else {
+                    float position_error = s_target_position_rad - s_state.position_rad;
+                    s_state.target_rad_s = position_error * s_position_kp;
+                }
                 if (s_state.target_rad_s > s_position_speed_limit)
                     s_state.target_rad_s = s_position_speed_limit;
                 if (s_state.target_rad_s < -s_position_speed_limit)
                     s_state.target_rad_s = -s_position_speed_limit;
             }
             float error = s_state.target_rad_s - speed;
-            float dt = (float)(now - s_control_tick) / RT_TICK_PER_SECOND;
-            if (dt <= 0.0f || dt > 0.05f) dt = ENCODER_SAMPLE_PERIOD_MS / 1000.0f;
-            s_control_tick = now;
+            unsigned position_holding = s_state.mode == 8 && s_position_move_ms &&
+                                        s_position_reference.holding;
             float base_uq;
             float uq;
             if (s_state.mode == 7) {
@@ -654,7 +674,7 @@ void motor_control_thread(void *parameter)
                 base_uq = s_kp * error + s_state.excitation_v;
             } else {
                 /* Identified-model feed-forward plus PI speed control. */
-                s_integral_v += s_ki * error * dt;
+                if (!position_holding) s_integral_v += s_ki * error * dt;
                 if (s_integral_v > s_limit) s_integral_v = s_limit;
                 if (s_integral_v < -s_limit) s_integral_v = -s_limit;
                 /* Apply only in speed mode: position-loop dynamics unchanged. */
@@ -686,11 +706,13 @@ void motor_control_thread(void *parameter)
             s_state.voltage_clipped = uq > s_limit || uq < -s_limit;
             if (uq > s_limit) {
                 uq = s_limit;
-                if (s_state.mode != 7 && error > 0.0f) s_integral_v -= s_ki * error * dt;
+                if (s_state.mode != 7 && !position_holding && error > 0.0f)
+                    s_integral_v -= s_ki * error * dt;
             }
             if (uq < -s_limit) {
                 uq = -s_limit;
-                if (s_state.mode != 7 && error < 0.0f) s_integral_v -= s_ki * error * dt;
+                if (s_state.mode != 7 && !position_holding && error < 0.0f)
+                    s_integral_v -= s_ki * error * dt;
             }
             s_state.uq = uq;
             if (fabsf(speed) > 1.2f * MOTOR_MAX_RPM * MOTOR_TWO_PI / 60.0f) fault_output(4);

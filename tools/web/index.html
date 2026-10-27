@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#182d48">
   <meta name="color-scheme" content="light">
-  <meta name="description" content="基于RT-Thread与MCXA346的无刷电机本地监测台。只读显示AS5600角度与速度，调参由串口CLI完成。">
+  <meta name="description" content="无刷电机速度与位置控制、参数调整、神经网络混合控制和实时角度监测。">
   <title>Motor Lab · 无刷电机监测台</title>
   <link rel="icon" href="data:,">
   <link rel="stylesheet" href="/styles.css">
@@ -21,15 +21,14 @@
           <path d="M20 4v9m0 14v9M4 20h9m14 0h9" stroke="currentColor" stroke-width="4"/>
           <circle cx="20" cy="20" r="5" fill="currentColor"/>
         </svg>
-        <span><strong>Motor Lab<span class="brand-cn">无刷电机监测台</span></strong><small>RT-Thread 驱动的电机控制实验平台</small></span>
+        <span><strong>Motor Lab<span class="brand-cn">智能无刷电机控制器</span></strong></span>
       </a>
-      <div class="header-meta"><span class="board-label">FRDM-MCXA346</span><span class="read-only"><span class="lock-icon" aria-hidden="true"></span>只读监测</span></div>
     </div>
   </header>
 
   <main class="shell" id="workspace">
     <div class="page-heading">
-      <div><p class="breadcrumb">工作台 <span aria-hidden="true">/</span> 实时监测</p><h1>看见每一次转动<span class="heading-period">。</span></h1><p class="page-description">角度、速度与链路状态，在同一个面板中实时呈现。</p></div>
+      <div><h1>电机控制与监测</h1></div>
       <div id="liveBadge" class="live-badge" role="status"><i class="dot" aria-hidden="true"></i><span id="liveText">设备未连接</span></div>
     </div>
 
@@ -84,6 +83,39 @@
           </div>
           <button class="connect-button" id="connectButton" type="button"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M7 2v4m6-4v4M5 6h10v3a5 5 0 0 1-10 0V6zm5 8v4"/></svg><span id="connectText">连接设备</span></button>
           <div class="connection-status" id="connectionStatus" role="status"><i class="dot" aria-hidden="true"></i><span>未连接设备</span></div>
+          <div class="demo-controls" role="group" aria-label="电机演示">
+            <button class="calibrate-button" id="calibrateButton" type="button" disabled>电机校准</button>
+            <button class="demo-button" id="demoButton" type="button" disabled>一键演示</button>
+            <button class="stop-button" id="stopButton" type="button" disabled>停止</button>
+          </div>
+          <p class="demo-status" id="demoStatus" role="status">请先连接设备</p>
+          <p class="demo-hint">演示：60 RPM转速控制 → 三段120°位置控制</p>
+        </section>
+
+        <section class="panel manual-control" aria-labelledby="controlHeading">
+          <div class="panel-heading"><h2 id="controlHeading">手动控制</h2><span id="motorMode" class="small-tag">待连接</span></div>
+          <form id="speedForm" class="command-form">
+            <label class="field-label" for="rpmInput">目标转速 <span>RPM · 正负值选方向</span></label>
+            <div class="command-row">
+              <input id="rpmInput" type="number" min="-1000" max="1000" step="1" value="60" required inputmode="numeric">
+              <button id="speedButton" class="action-button" type="submit" disabled>下发速度</button>
+            </div>
+          </form>
+          <form id="positionForm" class="command-form position-command">
+            <div class="position-label">
+              <label class="field-label" for="positionInput">目标角度 <span>°</span></label>
+              <select id="positionReference" aria-label="位置参考">
+                <option value="relative">相对当前位置</option>
+                <option value="absolute">相对校准零点</option>
+              </select>
+            </div>
+            <div class="command-row">
+              <input id="positionInput" type="number" min="-5729.57" max="5729.57" step="any" value="120" required inputmode="decimal">
+              <button id="positionButton" class="action-button" type="submit" disabled>下发位置</button>
+            </div>
+          </form>
+          <div class="control-feedback"><span>实际转速 <strong><span id="rpmFeedback">—</span> RPM</strong></span><span>输出 <strong><span id="uqFeedback">—</span> V</strong></span></div>
+          <p id="controlStatus" class="control-status" role="status">连接后可下发控制指令</p>
         </section>
 
         <section class="panel metrics" aria-labelledby="telemetryHeading">
@@ -99,12 +131,34 @@
         <section class="panel link-panel" aria-labelledby="linkHeading">
           <div class="panel-heading"><h2 id="linkHeading">数据链路</h2><span id="linkState" class="link-state">等待设备</span></div>
           <div class="link-values"><div><span>接收频率</span><strong><span id="rateValue">—</span><small>Hz</small></strong></div><div><span>累计丢帧</span><strong><span id="droppedValue">—</span><small>帧</small></strong></div></div>
-          <p id="detailStatus" class="detail-status">连接串口后显示链路统计。校准与调参请使用CLI。</p>
+          <p id="detailStatus" class="detail-status">连接后显示通信状态。</p>
         </section>
       </aside>
+
+      <section class="panel tuning" aria-labelledby="tuningHeading">
+        <div class="panel-heading"><h2 id="tuningHeading">控制参数</h2><span class="small-tag">修改后确认应用</span></div>
+        <form id="tuningForm">
+          <div class="profile-row">
+            <label class="field-label" for="tuningProfile">参数组</label>
+            <select id="tuningProfile"><option value="position">位置环</option><option value="speed">速度环</option></select>
+          </div>
+          <div class="parameter-grid">
+            <label for="kpInput">速度 Kp<input id="kpInput" type="number" min="0" max="0.2" step="0.001" value="0.040" required></label>
+            <label for="kiInput">速度 Ki<input id="kiInput" type="number" min="0" max="2" step="0.001" value="0.650" required></label>
+            <label for="voltageInput">限压 / V<input id="voltageInput" type="number" min="0.1" max="1.5" step="0.001" value="1" required></label>
+            <label for="poskpInput">位置 Kp<input id="poskpInput" type="number" min="0" max="20" step="0.001" value="15" required></label>
+            <label for="posmaxInput">位置限速 / RPM<input id="posmaxInput" type="number" min="1" max="1000" step="1" value="90" required></label>
+            <label for="posmoveInput">轨迹时长 / ms<input id="posmoveInput" type="number" min="0" max="2000" step="1" value="500" required></label>
+          </div>
+          <div class="apply-row"><p>手动控制各用各自参数；0 ms使用原位置路径。</p><button id="applyParameters" class="action-button" type="submit" disabled>应用参数</button></div>
+        </form>
+        <form id="nnForm" class="nn-controls">
+          <div class="nn-heading"><label class="switch-label" for="nnEnabled"><input id="nnEnabled" type="checkbox" role="switch"><span class="switch-track" aria-hidden="true"></span><span>NN混合控制</span></label><span id="nnState" class="nn-state">未下发</span></div>
+          <div class="nn-row"><label for="nnAlpha">融合系数</label><input id="nnAlpha" type="number" min="0" max="1" step="0.001" value="0.25" required><button id="applyNn" class="action-button secondary-action" type="submit" disabled>应用NN</button></div>
+        </form>
+        <p id="settingsStatus" class="control-status" role="status">仅应用时停机，不会自动重新启动。</p>
+      </section>
     </div>
-    <div class="workspace-note"><span class="note-icon" aria-hidden="true">i</span><p>网页只做监测，不下发电机启动指令。调参、校准与控制由串口CLI完成，两者请勿同时占用串口。</p></div>
-    <footer><span>RT-Thread × MCXA346 <span class="footer-divider">/</span> 轻量神经网络混合控制</span><span>本地运行 <span class="footer-divider">/</span> 115200 baud <span class="footer-divider">/</span> 无云端连接</span></footer>
   </main>
 </body>
 </html>

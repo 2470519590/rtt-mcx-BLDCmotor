@@ -231,6 +231,22 @@ void host_cli_thread(void *parameter)
                         length = 0;
                         continue;
                     }
+                    if (valid && command[0] == 'c' && value == 0) {
+                        /* Read unwrapped position for relative host demos.
+                           Never change the target or require an alignment. */
+                        motor_state_t position_state = {0};
+                        char reply[96];
+                        motor_control_get_state(&position_state);
+                        int n = rt_snprintf(reply, sizeof(reply),
+                            "POS,0,%d,%u,%u,%u\r\n",
+                            (int)(position_state.position_rad * 1000),
+                            position_state.sensor_ok, position_state.calibrated,
+                            position_state.fault);
+                        if (n > 0 && n < (int)sizeof(reply))
+                            cli_write(uart, (const uint8_t *)reply, (size_t)n);
+                        length = 0;
+                        continue;
+                    }
                     if (valid && command[0] == 'E' && value == 0) {
                         /* Command-path trace: which op reached the handler, how
                            many did, and where the last one stopped. */

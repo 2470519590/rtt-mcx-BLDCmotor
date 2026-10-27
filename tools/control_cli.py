@@ -78,9 +78,12 @@ class MotorSerial:
             'voltage': ('V', 1000, .1, 1.5),
             'anglephase': ('a', 1000, -3.142, 3.142),
             'pref': ('r', 1, 0, 200),
+            'posmove': ('t', 1, 0, 2000),
         }[name]
         if not math.isfinite(setting) or not low <= setting <= high:
             raise ValueError(f'Allowed range: {low:g} to {high:g}')
+        if name == 'posmove' and (setting != round(setting) or 0 < setting < 100):
+            raise ValueError('posmove: 0 for legacy, or 100..2000 milliseconds')
         self.send_checked(opcode, round(setting * scale))
 
     def set_nn_mode(self, name):
@@ -292,7 +295,7 @@ def main():
     except (OSError, serial.SerialException) as exc:
         parser.exit(1, f'Cannot open {args.port}: {exc}\nClose/disconnect other serial programs first.\n')
     print(f'Connected directly to {args.port}. No HTTP connection.')
-    print('state | voltage 1.0 | openloop 10 | sweep 10 200 20 | stop | calibrate | kp 0.0078 | ki 0.284 | profile manual/baseline/tuned/smooth/lowfast | poskp 4.0 | posmax 60 | nn off/shadow/on/ff/ffshadow/angleshadow/angletrial/dynamicshadow/dynamic/dynamiclinear | anglephase radians | ffload model.json | nnalpha 0.25 | learn on/off | run 30 | position 10 | pwmtest | quit')
+    print('state | voltage 1.0 | openloop 10 | sweep 10 200 20 | stop | calibrate | kp 0.0078 | ki 0.284 | profile manual/baseline/tuned/smooth/lowfast | poskp 4.0 | posmax 60 | posmove 500 (0=legacy) | nn off/shadow/on/ff/ffshadow/angleshadow/angletrial/dynamicshadow/dynamic/dynamiclinear | anglephase radians | ffload model.json | nnalpha 0.25 | learn on/off | run 30 | position 10 | pwmtest | quit')
     print('identify 60 0.05 0.2 5 8 [output.csv] | analyze [input.csv]')
     print('estimator legacy/regression/observer | timing | timingreset (settings while stopped)')
     print('transition reset/keep (stopped only; keep affects speed-to-speed changes)')
@@ -378,11 +381,11 @@ def main():
                     if not path:
                         raise ValueError('No completed recording; use analyze path.csv')
                     analyze_file(path)
-                elif op in ('kp', 'ki', 'poskp', 'posmax', 'voltage', 'anglephase') and len(words) == 2:
+                elif op in ('kp', 'ki', 'poskp', 'posmax', 'posmove', 'voltage', 'anglephase') and len(words) == 2:
                     motor.set_parameter(op, float(words[1]))
                     print('Setting accepted; firmware accepts settings only while stopped.')
                 else:
-                    print('Use state, voltage, openloop, sweep, identify, analyze, stop, calibrate, kp, ki, profile, estimator legacy/regression/observer, timing, timingreset, poskp, posmax, nn, ffload, nnalpha, learn, run, position, pwmtest, quit.')
+                    print('Use state, voltage, openloop, sweep, identify, analyze, stop, calibrate, kp, ki, profile, estimator legacy/regression/observer, timing, timingreset, poskp, posmax, posmove, nn, ffload, nnalpha, learn, run, position, pwmtest, quit.')
             except (ValueError, KeyError, TypeError, OSError, ImportError, serial.SerialException) as exc:
                 print(exc)
     except (EOFError, KeyboardInterrupt):

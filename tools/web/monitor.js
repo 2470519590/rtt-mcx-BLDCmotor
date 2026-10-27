@@ -7,6 +7,20 @@ let lastState = null;
 let busy = false;
 let localError = '';
 let streamError = false;
+let demoPending = false;
+let calibrationPending = false;
+let demoError = '';
+let renderedSession = null;
+let controlPending = false;
+let controlError = '';
+let settingsError = '';
+let settingsNotice = '';
+let nnDirty = false;
+const PARAM_FIELDS = ['kp', 'ki', 'voltage', 'poskp', 'posmax', 'posmove'];
+const DEFAULT_PROFILES = {
+  speed: { kp: .008, ki: .284, voltage: 1, poskp: 4, posmax: 60, posmove: 0 },
+  position: { kp: .040, ki: .650, voltage: 1, poskp: 15, posmax: 90, posmove: 500 },
+};
 
 // Only replace changed text. Telemetry stays "latest wins", without a frame queue.
 function text(id, value) {
@@ -91,14 +105,126 @@ async function refreshPorts() {
 
 function syncControls() {
   const connected = Boolean(lastState?.connected);
-  $('connectButton').disabled = busy || (!connected && !$('portSelect').value);
+  const running = Boolean(lastState?.demo?.running) || demoPending;
+  const calibrating = calibrationPending
+    || (lastState?.demo?.running && lastState.demo.operation === 'calibration');
+  $('connectButton').disabled = busy || controlPending || running || calibrating || (!connected && !$('portSelect').value);
   $('portSelect').disabled = busy || connected;
+  const fresh = lastState?.updated_at && Date.now() / 1000 - lastState.updated_at < .5;
+  $('demoButton').disabled = !connected || controlPending || running || calibrating || !fresh || streamError
+    || lastState?.sensor !== 'ok' || !lastState?.calibrated || Boolean(lastState?.fault);
+  $('calibrateButton').disabled = !connected || controlPending || running || calibrating || !fresh || streamError
+    || lastState?.sensor !== 'ok' || Boolean(lastState?.fault);
+  $('stopButton').disabled = !connected;
+  const available = connected && !busy && !controlPending && !running && !calibrating;
+  // Let the firmware ACK decide whether a target is accepted. Display freshness
+  // is not a second motor-control interlock.
+  $('speedButton').disabled = !available;
+  $('positionButton').disabled = !available;
+  for (const id of ['applyParameters', 'applyNn', 'nnEnabled']) $(id).disabled = !available;
+  text('demoButton', running && !calibrating ? '演示中…' : '一键演示');
+  text('calibrateButton', calibrating ? '校准中…' : '电机校准');
+}
+
+function loadProfile() {
+  const name = $('tuningProfile').value;
+  const values = lastState?.control?.profiles?.[name] || DEFAULT_PROFILES[name];
+  for (const key of PARAM_FIELDS) $(`${key}Input`).value = values[key];
+}
+
+async function sendControl(payload, settings = false) {
+  if (controlPending) return false;
+  controlPending = true;
+  if (settings) { settingsError = ''; settingsNotice = '正在应用…'; }
+  else controlError = '';
+  syncControls();
+  try {
+    const result = await api('/api/control', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (settings) {
+      settingsNotice = payload.action === 'nn' ? 'NN设置已应用，电机保持停止。' : '参数已应用，电机保持停止。';
+      if (payload.action === 'nn') nnDirty = false;
+    }
+    renderState(result.state || await api('/api/state'));
+    return true;
+  } catch (error) {
+    if (settings) { settingsError = error.message; settingsNotice = ''; }
+    else controlError = error.message;
+    return false;
+  } finally {
+    controlPending = false;
+    syncControls();
+  }
+}
+
+function applyParameters(event) {
+  event.preventDefault();
+  const values = Object.fromEntries(PARAM_FIELDS.map((key) => [key, Number($(`${key}Input`).value)]));
+  if (values.posmove > 0 && values.posmove < 100) {
+    settingsError = '轨迹时长为0或100至2000 ms';
+    return;
+  }
+  const profile = $('tuningProfile').value;
+  const message = `确认应用${profile === 'position' ? '位置环' : '速度环'}参数？\n`
+    + `速度 Kp ${values.kp}，Ki ${values.ki}\n位置 Kp ${values.poskp}，限速 ${values.posmax} RPM\n`
+    + `轨迹 ${values.posmove} ms，限压 ${values.voltage} V\n当前运行将停止，应用后不自动启动。`;
+  if (!window.confirm(message)) return;
+  sendControl({ action: 'parameters', profile, values, confirmed: true }, true);
+}
+
+function applyNn(event) {
+  event.preventDefault();
+  const enabled = $('nnEnabled').checked;
+  const alpha = Number($('nnAlpha').value);
+  if (!window.confirm(`确认${enabled ? '开启' : '关闭'}NN混合控制？\n`
+    + `融合系数 ${alpha}。当前运行将停止，应用后不自动启动。`)) return;
+  sendControl({ action: 'nn', enabled, alpha, confirmed: true }, true);
+}
+
+async function calibrateMotor() {
+  if (calibrationPending || demoPending || lastState?.demo?.running) return;
+  calibrationPending = true;
+  demoError = '';
+  syncControls();
+  try {
+    await api('/api/calibrate', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
+    });
+    renderState(await api('/api/state'));
+  } catch (error) {
+    demoError = error.message;
+  } finally {
+    calibrationPending = false;
+    syncControls();
+  }
+}
+
+async function demoAction(start) {
+  if (start && (demoPending || calibrationPending || lastState?.demo?.running)) return;
+  demoError = '';
+  if (!start) controlError = '';
+  if (start) demoPending = true;
+  syncControls();
+  try {
+    await api(`/api/demo/${start ? 'start' : 'stop'}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
+    });
+    renderState(await api('/api/state'));
+  } catch (error) {
+    demoError = error.message;
+  } finally {
+    demoPending = false;
+    syncControls();
+  }
 }
 
 async function toggleConnection() {
   if (busy) return;
   busy = true;
   localError = '';
+  demoError = '';
   syncControls();
   try {
     if (lastState?.connected) {
@@ -122,6 +248,17 @@ async function toggleConnection() {
 }
 
 function renderState(state) {
+  const session = JSON.stringify([state.connected, state.port, state.connection_id]);
+  if (renderedSession !== session) {
+    demoError = '';
+    controlError = '';
+    settingsError = '';
+    settingsNotice = '';
+    nnDirty = false;
+    lastState = state;
+    loadProfile();
+  }
+  renderedSession = session;
   lastState = state;
   const connected = Boolean(state.connected);
   const hasData = state.updated_at !== null && state.updated_at !== undefined;
@@ -134,6 +271,31 @@ function renderState(state) {
   text('connectText', busy ? '处理中…' : connected ? '断开连接' : '连接设备');
   $('connectButton').classList.toggle('secondary', connected);
   syncControls();
+  const demo = state.demo || {};
+  text('demoStatus', !connected ? '待命 · 请先连接设备' : demoError || demo.error
+    || (demo.running ? demo.phase : !sensorOk ? '待命 · 等待有效编码器数据'
+      : state.motor_mode === 1 ? '校准中'
+      : !state.calibrated ? '请先点击电机校准' : demo.phase || '待命'));
+  $('demoStatus').classList.toggle('bad', connected && Boolean(demoError || demo.error));
+  const control = state.control || {};
+  const manual = control.manual || {};
+  text('motorMode', !connected ? '待连接' : ({ 0: '已停止', 1: '校准中', 2: '速度环', 3: '故障', 8: '位置环' }[state.motor_mode] || '待命'));
+  text('controlStatus', !connected ? '连接后可下发控制指令' : controlError
+    || (controlPending ? '指令下发中…' : manual.message || '待命'));
+  $('controlStatus').classList.toggle('bad', Boolean(controlError));
+  text('settingsStatus', settingsError || settingsNotice || '仅应用时停机，不会自动重新启动。');
+  $('settingsStatus').classList.toggle('bad', Boolean(settingsError));
+  const nnKnown = control.nn_mode !== null && control.nn_mode !== undefined;
+  const nnOn = control.nn_mode === 2;
+  text('nnState', (nnKnown ? nnOn ? `已开启 · ${Number(control.nn_alpha || 0).toFixed(3)}` : '已关闭'
+    : '未下发') + (nnDirty ? ' · 待应用' : ''));
+  $('nnState').classList.toggle('on', nnOn);
+  if (!nnDirty) {
+    $('nnEnabled').checked = nnOn;
+    if (control.nn_alpha !== null && control.nn_alpha !== undefined) $('nnAlpha').value = control.nn_alpha;
+  }
+  text('rpmFeedback', sensorOk ? (Number(state.speed_mrad_s || 0) * 60 / (2000 * Math.PI)).toFixed(1) : '—');
+  text('uqFeedback', sensorOk && state.uq_mv !== null && state.uq_mv !== undefined ? (state.uq_mv / 1000).toFixed(3) : '—');
 
   if (localError) connectionMessage(localError, true);
   else if (state.error) connectionMessage(`串口读取异常：${state.error}`, true);
@@ -150,7 +312,7 @@ function renderState(state) {
   text('rateValue', sensorOk ? Number(state.rx_hz || 0).toFixed(1) : '—');
   text('droppedValue', hasData ? state.dropped_frames ?? 0 : '—');
   text('detailStatus', state.error ? `串口读取异常：${state.error}`
-    : !connected ? '连接串口后显示链路统计。校准与调参请使用CLI。'
+    : !connected ? '连接后显示通信状态。'
     : !hasData ? `串口已打开，尚未收到有效角度帧（已接收 ${state.rx_bytes || 0} 字节）。`
     : sensorOk ? `帧间隔 P95 ${Number(state.interval_p95_ms || 0).toFixed(1)} ms，最大 ${Number(state.interval_max_ms || 0).toFixed(1)} ms。`
     : streamError ? '网页推送中断；显示值为最后一次接收，不代表当前电机状态。'
@@ -192,6 +354,23 @@ refreshPorts();
 $('refreshButton').addEventListener('click', refreshPorts);
 $('portSelect').addEventListener('change', syncControls);
 $('connectButton').addEventListener('click', toggleConnection);
+$('demoButton').addEventListener('click', () => demoAction(true));
+$('calibrateButton').addEventListener('click', calibrateMotor);
+$('stopButton').addEventListener('click', () => demoAction(false));
+$('speedForm').addEventListener('submit', (event) => {
+  event.preventDefault();
+  sendControl({ action: 'run', rpm: Number($('rpmInput').value) });
+});
+$('positionForm').addEventListener('submit', (event) => {
+  event.preventDefault();
+  sendControl({ action: 'position', degrees: Number($('positionInput').value),
+    reference: $('positionReference').value });
+});
+$('tuningProfile').addEventListener('change', loadProfile);
+$('tuningForm').addEventListener('submit', applyParameters);
+$('nnForm').addEventListener('submit', applyNn);
+$('nnEnabled').addEventListener('change', () => { nnDirty = true; });
+$('nnAlpha').addEventListener('input', () => { nnDirty = true; });
 const stream = new EventSource('/api/events');
 stream.onmessage = (event) => {
   try {
